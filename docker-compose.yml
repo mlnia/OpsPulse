@@ -1,0 +1,70 @@
+name: opspulse
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-opspulse}
+      POSTGRES_USER: ${POSTGRES_USER:-opspulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opspulse}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opspulse -d opspulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  incident-service:
+    build: ./services/incident-service
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://opspulse:opspulse@postgres:5432/opspulse}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    ports: ["8000:8000"]
+
+  notification-worker:
+    build: ./services/notification-worker
+    env_file: .env
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on: [redis]
+
+  web:
+    build: ./apps/web
+    depends_on: [incident-service]
+    ports: ["5173:80"]
+
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["9090:9090"]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes: ["./infra/observability/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro"]
+    ports: ["4318:4318"]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+
+volumes:
+  postgres-data:

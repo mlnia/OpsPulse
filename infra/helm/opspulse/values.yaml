@@ -1,0 +1,11 @@
+namespace: opspulse
+incidentService:
+  image: ghcr.io/your-user/opspulse-incident-service:latest
+  replicas: 2
+web:
+  image: ghcr.io/your-user/opspulse-web:latest
+  replicas: 2
+secrets:
+  databaseUrl: postgresql+psycopg://opspulse:CHANGE_ME@postgres:5432/opspulse
+  redisUrl: redis://redis:6379/0
+  jwtSecret: replace-me

@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-secrets
+type: Opaque
+stringData:
+  database-url: {{ .Values.secrets.databaseUrl | quote }}
+  redis-url: {{ .Values.secrets.redisUrl | quote }}
+  jwt-secret: {{ .Values.secrets.jwtSecret | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-incident-service
+spec:
+  replicas: {{ .Values.incidentService.replicas }}
+  selector: { matchLabels: { app: incident-service } }
+  template:
+    metadata: { labels: { app: incident-service } }
+    spec:
+      containers:
+        - name: api
+          image: {{ .Values.incidentService.image }}
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: "{{ .Release.Name }}-secrets", key: database-url } } }
+            - { name: REDIS_URL, valueFrom: { secretKeyRef: { name: "{{ .Release.Name }}-secrets", key: redis-url } } }
+            - { name: JWT_SECRET, valueFrom: { secretKeyRef: { name: "{{ .Release.Name }}-secrets", key: jwt-secret } } }
+          readinessProbe: { httpGet: { path: /health, port: 8000 } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-incident-service }
+spec:
+  selector: { app: incident-service }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ .Release.Name }}-web }
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: web
+          image: {{ .Values.web.image }}
+          ports: [{ containerPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-web }
+spec:
+  selector: { app: web }
+  ports: [{ port: 80, targetPort: 80 }]

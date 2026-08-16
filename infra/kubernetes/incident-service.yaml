@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-service
+  namespace: opspulse
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: incident-service }
+  template:
+    metadata:
+      labels: { app: incident-service }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/your-user/opspulse-incident-service:latest
+          ports: [{ containerPort: 8000 }]
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: opspulse-secrets, key: database-url } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: opspulse-secrets, key: redis-url } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: opspulse-secrets, key: jwt-secret } }
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 5 }
+          livenessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 15 }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-service
+  namespace: opspulse
+spec:
+  selector: { app: incident-service }
+  ports: [{ port: 8000, targetPort: 8000 }]

@@ -1,0 +1,15 @@
+groups:
+  - name: opspulse-api
+    rules:
+      - alert: IncidentServiceDown
+        expr: up{job="incident-service"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Incident service is unavailable"
+      - alert: HighApiErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: high }
+        annotations:
+          summary: "5xx error ratio exceeded 5%"
